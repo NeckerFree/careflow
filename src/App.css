@@ -1,0 +1,16 @@
+.dashboard-summary {
+  display: flex;
+  flex-direction: row;
+  gap: 16px;
+}
+
+.patient {
+  display: flex;
+  flex-direction: row;
+  gap: 16px;
+}
+
+.patientSelected {
+  background-color: #eddede;
+  border: 2px solid blue;
+}
