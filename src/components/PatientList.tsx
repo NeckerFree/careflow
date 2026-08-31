@@ -44,7 +44,11 @@ export default function PatientList()
     const [selectedPatientId, setSelectedPatientId] = useState<number | null>(null);
     const [search, setSearch] = useState("");
     const [patients, setPatients] = useState<Patient[]>(initialPatients);
-
+    const filteredPatients = patients.filter(patient =>
+        `${patient.firstName} ${patient.lastName}`
+            .toLowerCase()
+            .includes(search.toLowerCase())
+    );
     function handleChangeStatus(id: number, newStatus: PatientStatus)
     {
         setPatients(prevPatients =>
@@ -58,17 +62,6 @@ export default function PatientList()
     function handleSearchData(event: React.ChangeEvent<HTMLInputElement>)
     {
         setSearch(event.target.value);
-        if (event.target.value === "")
-        {
-            setPatients(initialPatients);
-        } else
-            setPatients(prevPatients =>
-                prevPatients.filter(patient =>
-                    `${patient.firstName} ${patient.lastName}`
-                        .toLowerCase()
-                        .includes(event.target.value.toLowerCase())
-                )
-            );
     }
     return (
         <>
@@ -79,7 +72,7 @@ export default function PatientList()
                 placeholder="Search patients"
             />
             <div className="patient-list">
-                {patients.map((patient) => (
+                {filteredPatients.map((patient) => (
                     <PatientCard
                         key={patient.id}
                         patient={patient}

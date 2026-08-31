@@ -20,7 +20,12 @@ const PatientCard = ({ patient, isSelected, onSelect, onChangeStatus }: PatientC
             {patient.email && <p>Email: {patient.email}</p>}
             {patient.phone && <p>Phone: {patient.phone}</p>}
             <StatusBadge status={patient.status} />
-            <button disabled={patient.status === "critical"} onClick={() => onChangeStatus(patient.id, "critical")}>Mark Critical</button>
+            <button disabled={patient.status === "critical"}
+                onClick={(event) =>
+                {
+                    event.stopPropagation();
+                    onChangeStatus(patient.id, "critical")
+                }}>Mark Critical</button>
         </article>
     );
 };
