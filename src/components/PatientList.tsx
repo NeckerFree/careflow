@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Patient, PatientStatus } from '../types/patient';
 import PatientCard from './PatientCard';
+import AppointmentForm from "./AppointmentForm";
 export default function PatientList()
 {
 
@@ -82,6 +83,7 @@ export default function PatientList()
                     />
                 ))}
             </div>
+            <AppointmentForm patients={patients} />
         </>
     )
 }

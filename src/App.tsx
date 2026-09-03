@@ -3,7 +3,7 @@ import Header from './components/Header'
 import DashboardSummary from './components/DashboardSummary'
 import PatientList from './components/PatientList'
 import { useState } from 'react';
-import Counter from "./components/Counter";
+//import Counter from "./components/Counter";
 
 function App()
 {
@@ -20,7 +20,6 @@ function App()
         </button>
 
         {showPatients && <PatientList />}
-        <Counter />
       </main>
     </>
 

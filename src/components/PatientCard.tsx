@@ -10,6 +10,7 @@ type PatientCardProps = {
         status: PatientStatus
     ) => void;
 };
+
 const PatientCard = ({ patient, isSelected, onSelect, onChangeStatus }: PatientCardProps) =>
 {
     return (
@@ -20,6 +21,7 @@ const PatientCard = ({ patient, isSelected, onSelect, onChangeStatus }: PatientC
             {patient.email && <p>Email: {patient.email}</p>}
             {patient.phone && <p>Phone: {patient.phone}</p>}
             <StatusBadge status={patient.status} />
+            {patient.status === "critical" && <p>⚠ Immediate attention required</p>}
             <button disabled={patient.status === "critical"}
                 onClick={(event) =>
                 {
