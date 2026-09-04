@@ -8,7 +8,7 @@ import { useState } from 'react';
 function App()
 {
   const [showPatients, setShowPatients] = useState(true);
-  console.log("App rendered");
+
   return (
     <>
       <Header />
