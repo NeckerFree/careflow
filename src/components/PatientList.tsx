@@ -1,50 +1,54 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { Patient, PatientStatus } from '../types/patient';
 import PatientCard from './PatientCard';
 import AppointmentForm from "./AppointmentForm";
+import { getPatients } from "../api/patientsApi"
+
 export default function PatientList()
 {
 
-    const initialPatients: Patient[] = [
-        {
-            id: 1,
-            firstName: "John",
-            lastName: "Doe",
-            dateOfBirth: "1978-05-15",
-            status: "active",
-        },
-        {
-            id: 2,
-            firstName: "Jane",
-            lastName: "Smith",
-            dateOfBirth: "1985-10-20",
-            status: "inactive",
-        },
-        {
-            id: 3,
-            firstName: "Alice",
-            lastName: "Johnson",
-            dateOfBirth: "1990-03-12",
-            status: "critical",
-        },
-        {
-            id: 4,
-            firstName: "Bob",
-            lastName: "Brown",
-            dateOfBirth: "1988-07-25",
-            status: "active",
-        },
-        {
-            id: 5,
-            firstName: "Elio",
-            lastName: "Cortés",
-            dateOfBirth: "1968-10-20",
-            status: "inactive",
-        }];
-
     const [selectedPatientId, setSelectedPatientId] = useState<number | null>(null);
     const [search, setSearch] = useState("");
-    const [patients, setPatients] = useState<Patient[]>(initialPatients);
+    const [patients, setPatients] = useState<Patient[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() =>
+    {
+        const controller = new AbortController();
+        async function loadPatients()
+        {
+            try
+            {
+                setIsLoading(true);
+                setError(null);
+
+                const data = await getPatients({ controller });
+
+                setPatients(data);
+            } catch (error)
+            {
+                if (
+                    error instanceof DOMException &&
+                    error.name === "AbortError"
+                )
+                {
+                    return;
+                }
+                setError("Unable to load patients");
+            } finally
+            {
+                setIsLoading(false);
+            }
+        }
+
+        loadPatients();
+        return () =>
+        {
+            controller.abort();
+        };
+    }, []);
+
     const filteredPatients = patients.filter(patient =>
         `${patient.firstName} ${patient.lastName}`
             .toLowerCase()
@@ -63,6 +67,15 @@ export default function PatientList()
     function handleSearchData(event: React.ChangeEvent<HTMLInputElement>)
     {
         setSearch(event.target.value);
+    }
+
+    if (isLoading)
+    {
+        return <p>Loading patients...</p>;
+    }
+    if (error)
+    {
+        return <p>{error}</p>;
     }
     return (
         <>
