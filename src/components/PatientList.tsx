@@ -1,53 +1,38 @@
-import { useState, useEffect } from 'react';
-import type { Patient, PatientStatus } from '../types/patient';
+import { useState } from 'react';
+import type { PatientStatus } from '../types/patient';
 import PatientCard from './PatientCard';
 import AppointmentForm from "./AppointmentForm";
-import { getPatients } from "../api/patientsApi"
-
+import { getPatients, updatePatientStatus } from "../api/patientsApi"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 export default function PatientList()
 {
 
     const [selectedPatientId, setSelectedPatientId] = useState<number | null>(null);
     const [search, setSearch] = useState("");
-    const [patients, setPatients] = useState<Patient[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
 
-    useEffect(() =>
-    {
-        const controller = new AbortController();
-        async function loadPatients()
+    const {
+        data: patients = [],
+        isLoading,
+        error,
+    } = useQuery({
+        queryKey: ["patients"],
+        queryFn: ({ signal }) => getPatients({ signal }),
+    });
+    const queryClient = useQueryClient();
+
+    type UpdatePatientStatusVariables = {
+        id: number;
+        newStatus: PatientStatus;
+    };
+
+    const mutation = useMutation({
+        mutationFn: ({ id, newStatus }: UpdatePatientStatusVariables) => updatePatientStatus(id, newStatus),
+        onSuccess: () =>
         {
-            try
-            {
-                setIsLoading(true);
-                setError(null);
+            queryClient.invalidateQueries({ queryKey: ["patients"] });
+        },
+    });
 
-                const data = await getPatients({ controller });
-
-                setPatients(data);
-            } catch (error)
-            {
-                if (
-                    error instanceof DOMException &&
-                    error.name === "AbortError"
-                )
-                {
-                    return;
-                }
-                setError("Unable to load patients");
-            } finally
-            {
-                setIsLoading(false);
-            }
-        }
-
-        loadPatients();
-        return () =>
-        {
-            controller.abort();
-        };
-    }, []);
 
     const filteredPatients = patients.filter(patient =>
         `${patient.firstName} ${patient.lastName}`
@@ -56,13 +41,10 @@ export default function PatientList()
     );
     function handleChangeStatus(id: number, newStatus: PatientStatus)
     {
-        setPatients(prevPatients =>
-            prevPatients.map(patient =>
-                patient.id === id
-                    ? { ...patient, status: newStatus }
-                    : patient
-            )
-        );
+        mutation.mutate({
+            id,
+            newStatus,
+        });
     }
     function handleSearchData(event: React.ChangeEvent<HTMLInputElement>)
     {
@@ -75,7 +57,7 @@ export default function PatientList()
     }
     if (error)
     {
-        return <p>{error}</p>;
+        return <p>{error.message}</p>;
     }
     return (
         <>

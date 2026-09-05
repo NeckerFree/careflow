@@ -1,8 +1,8 @@
-import type { Patient } from "../types/patient";
+import type { Patient, PatientStatus } from "../types/patient";
 export type ApiProps = {
-    controller: AbortController
+    signal?: AbortSignal
 }
-export async function getPatients({ controller }: ApiProps): Promise<Patient[]>
+export async function getPatients({ signal }: ApiProps): Promise<Patient[]>
 {
     type JsonPlaceholderUser = {
         id: number;
@@ -13,7 +13,7 @@ export async function getPatients({ controller }: ApiProps): Promise<Patient[]>
     const response = await fetch(
         "https://jsonplaceholder.typicode.com/users",
         {
-            signal: controller.signal,
+            signal,
         }
     );
 
@@ -32,4 +32,28 @@ export async function getPatients({ controller }: ApiProps): Promise<Patient[]>
         phone: user.phone,
         status: "active",
     }));
+}
+
+export async function updatePatientStatus(
+    id: number,
+    status: PatientStatus
+): Promise<void>
+{
+    const response = await fetch(
+        `https://jsonplaceholder.typicode.com/users/${id}`,
+        {
+            method: "PATCH",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                status,
+            }),
+        }
+    );
+
+    if (!response.ok)
+    {
+        throw new Error("Failed to update patient status");
+    }
 }

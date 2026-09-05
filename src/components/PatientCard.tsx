@@ -1,3 +1,4 @@
+
 import type { Patient, PatientStatus } from "../types/patient";
 import StatusBadge from "./StatusBadge";
 
