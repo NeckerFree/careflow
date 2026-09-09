@@ -1,9 +1,11 @@
+
 import type { Patient, PatientStatus } from "../types/patient";
 import StatusBadge from "./StatusBadge";
 
 type PatientCardProps = {
     patient: Patient;
     isSelected: boolean;
+    isUpdating: boolean;
     onSelect: (patientId: number) => void;
     onChangeStatus: (
         patientId: number,
@@ -11,7 +13,7 @@ type PatientCardProps = {
     ) => void;
 };
 
-const PatientCard = ({ patient, isSelected, onSelect, onChangeStatus }: PatientCardProps) =>
+const PatientCard = ({ patient, isSelected, isUpdating, onSelect, onChangeStatus }: PatientCardProps) =>
 {
     return (
         <article className={isSelected ? "patientSelected" : ""}
@@ -22,12 +24,12 @@ const PatientCard = ({ patient, isSelected, onSelect, onChangeStatus }: PatientC
             {patient.phone && <p>Phone: {patient.phone}</p>}
             <StatusBadge status={patient.status} />
             {patient.status === "critical" && <p>⚠ Immediate attention required</p>}
-            <button disabled={patient.status === "critical"}
+            <button disabled={patient.status === "critical" || isUpdating}
                 onClick={(event) =>
                 {
                     event.stopPropagation();
                     onChangeStatus(patient.id, "critical")
-                }}>Mark Critical</button>
+                }}>{isUpdating ? "Updating..." : "Mark Critical"}</button>
         </article>
     );
 };
