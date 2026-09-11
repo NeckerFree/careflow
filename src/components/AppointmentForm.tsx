@@ -59,6 +59,7 @@ const AppointmentForm = ({ patients }: AppointmentFormProps) =>
         {
             return;
         }
+        //API/data-access logic
         const appointment: CreateAppointment = {
             patientId,
             date,

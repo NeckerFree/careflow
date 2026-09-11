@@ -2,6 +2,7 @@ import type { Patient, PatientStatus } from "../types/patient";
 export type ApiProps = {
     signal?: AbortSignal
 }
+//API/data-access logic
 export async function getPatients({ signal }: ApiProps): Promise<Patient[]>
 {
     type JsonPlaceholderUser = {
