@@ -2,27 +2,26 @@ import { useState } from 'react';
 import type { PatientStatus, Patient } from '../types/patient';
 import PatientCard from './PatientCard';
 import AppointmentForm from "./AppointmentForm";
-import { getPatients, updatePatientStatus } from "../api/patientsApi"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-
+import { updatePatientStatus } from "../api/patientsApi"
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { usePatients } from "../hooks/usePatients";
+import { usePatientSearch } from "../hooks/usePatientSearch";
 export default function PatientList()
 {
-
+    //UI state
     const [selectedPatientId, setSelectedPatientId] = useState<number | null>(null);
-    const [search, setSearch] = useState("");
-    const [updatingPatientId, setUpdatingPatientId] = useState<number | null>(null);
 
+    const [updatingPatientId, setUpdatingPatientId] = useState<number | null>(null);
+    // Server state
     const {
         data: patients = [],
         isLoading,
         isFetching,
         error,
-    } = useQuery({
-        queryKey: ["patients"],
-        queryFn: ({ signal }) => getPatients({ signal }),
-        staleTime: 1000 * 30,
-        gcTime: 5 * 60 * 1000,
-    });
+    } = usePatients();
+
+    const { search, setSearch, filteredPatients } = usePatientSearch({ patients });
+
     const queryClient = useQueryClient();
 
     type UpdatePatientStatusVariables = {
@@ -66,12 +65,8 @@ export default function PatientList()
         },
     });
 
+    //UI event handlers
 
-    const filteredPatients = patients.filter(patient =>
-        `${patient.firstName} ${patient.lastName}`
-            .toLowerCase()
-            .includes(search.toLowerCase())
-    );
     function handleChangeStatus(id: number, newStatus: PatientStatus)
     {
         setUpdatingPatientId(id);
@@ -117,6 +112,7 @@ export default function PatientList()
                 onChange={handleSearchData}
                 placeholder="Search patients"
             />
+
             <div className="patient-list">
                 {filteredPatients.map((patient) => (
                     <PatientCard

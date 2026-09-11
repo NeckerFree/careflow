@@ -7,6 +7,7 @@ import { useState } from 'react';
 function App()
 {
   const [showPatients, setShowPatients] = useState(true);
+
   return (
     <>
       <Header />
