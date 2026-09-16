@@ -1,8 +1,8 @@
 
 import type { Patient, PatientStatus } from "../types/patient";
 import StatusBadge from "./StatusBadge";
-import { useAuth } from "../context/AuthContext";
-
+import { usePermission } from "../hooks/usePermission";
+import { useAuth } from "../hooks/useAuth";
 type PatientCardProps = {
     patient: Patient;
     isSelected: boolean;
@@ -17,7 +17,7 @@ type PatientCardProps = {
 const PatientCard = ({ patient, isSelected, isUpdating, onSelect, onChangeStatus }: PatientCardProps) =>
 {
     const { user } = useAuth();
-
+    const { can } = usePermission();
     return (
         <article className={isSelected ? "patientSelected" : ""}
             onClick={() => onSelect(patient.id)} >
@@ -28,12 +28,13 @@ const PatientCard = ({ patient, isSelected, isUpdating, onSelect, onChangeStatus
             {patient.phone && <p>Phone: {patient.phone}</p>}
             <StatusBadge status={patient.status} />
             {patient.status === "critical" && <p>⚠ Immediate attention required</p>}
-            <button disabled={patient.status === "critical" || isUpdating}
-                onClick={(event) =>
-                {
-                    event.stopPropagation();
-                    onChangeStatus(patient.id, "critical")
-                }}>{isUpdating ? "Updating..." : "Mark Critical"}</button>
+            {can("patients:update") && (
+                <button disabled={patient.status === "critical" || isUpdating}
+                    onClick={(event) =>
+                    {
+                        event.stopPropagation();
+                        onChangeStatus(patient.id, "critical")
+                    }}>{isUpdating ? "Updating..." : "Mark Critical"}</button>)}
         </article>
     );
 };

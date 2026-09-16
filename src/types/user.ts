@@ -2,7 +2,8 @@ export type UserRole =
     | "admin"
     | "doctor"
     | "nurse"
-    | "patient";
+    | "patient"
+    | "guest";
 
 export type user = {
     id: number;
