@@ -1,9 +1,10 @@
-import { useContext, createContext, type ReactNode, useState } from "react";
+import { createContext, type ReactNode, useState } from "react";
 type UserRole =
     | "admin"
     | "doctor"
     | "nurse"
-    | "patient";
+    | "patient"
+    | "guest";
 
 export type User = {
     id: number;
@@ -11,12 +12,7 @@ export type User = {
     email: string;
     role: UserRole;
 }
-const mockUser: User = {
-    id: 1,
-    name: "Pepe Grillo",
-    email: "pepe.grillo@email.com",
-    role: "doctor",
-}
+
 export type AuthContextValue = {
     user: User | null;
     isAuthenticated: boolean;
@@ -28,14 +24,23 @@ export const AuthContext = createContext<AuthContextValue | undefined>(undefined
 
 export function AuthProvider({ children }: { children: ReactNode })
 {
-    const [user, setUser] = useState<User | null>(mockUser);
+    const [user, setUser] = useState<User | null>(null);
     return (
         <AuthContext.Provider value={{
             user,
             isAuthenticated: !!user,
             login: async (email: string, password: string) =>
             {
-                setUser(mockUser);
+                if (password == "password")
+                {
+                    const mockUser: User = {
+                        id: 1,
+                        name: "Pepe Grillo",
+                        email: email,
+                        role: "guest",
+                    };
+                    setUser(mockUser);
+                }
             },
             logout: async () =>
             {
@@ -47,14 +52,3 @@ export function AuthProvider({ children }: { children: ReactNode })
     );
 }
 
-export function useAuth()
-{
-    const context = useContext(AuthContext);
-    if (!context)
-    {
-        throw new Error(
-            "useAuth must be used within AuthProvider"
-        );
-    }
-    return context;
-}
