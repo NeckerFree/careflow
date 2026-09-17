@@ -62,6 +62,7 @@ export async function updatePatientStatus(
 
 export async function createAppointment(appointment: Omit<Appointment, "id" | "status">): Promise<Appointment>
 {
+    await delay(3000);
     const response = await fetch(
         "https://jsonplaceholder.typicode.com/posts",
         {
@@ -78,4 +79,10 @@ export async function createAppointment(appointment: Omit<Appointment, "id" | "s
     }
     const data: Appointment = await response.json();
     return data;
+}
+
+
+function delay(ms: number): Promise<void>
+{
+    return new Promise((resolve) => setTimeout(resolve, ms));
 }
