@@ -1,107 +1,235 @@
 
 import { type Patient } from "../types/patient"
 import { type CreateAppointment } from "../types/appointment"
-import { useState } from "react";
+import { useActionState, useEffect, useRef } from "react";
+import { createAppointment } from "../api/patientsApi";
+import SubmitButton from "./SubmitButton";
+import { useQueryClient } from "@tanstack/react-query";
 type AppointmentFormProps = {
     patients: Patient[]
 
 }
-
 type AppointmentFormErrors = {
     patientId?: string;
     date?: string;
     time?: string;
     reason?: string;
 };
+type FormValues = {
+    patientId: string;
+    date: string;
+    time: string;
+    reason: string;
+};
 
+const EMPTY_FORM_VALUES: FormValues = {
+    patientId: "",
+    date: "",
+    time: "",
+    reason: "",
+};
 const AppointmentForm = ({ patients }: AppointmentFormProps) =>
 {
-    const [patientId, setPatientId] = useState<number | null>(null);
-    const [date, setDate] = useState("");
-    const [time, setTime] = useState("");
-    const [reason, setReason] = useState("");
-    const [errors, setErrors] = useState<AppointmentFormErrors>({});
+    const queryClient = useQueryClient();
+    const formRef = useRef<HTMLFormElement>(null);
 
 
-    function validateAppointment(): AppointmentFormErrors
-    {
-        const appointmentErrors: AppointmentFormErrors = {};
-        if (!patientId)
-        {
-            appointmentErrors.patientId = "Patient is required";
-        }
-        if (date === "")
-        {
-            appointmentErrors.date = "Date is required";
-        }
-        if (time === "")
-        {
-            appointmentErrors.time = "Time is required";
 
-        }
-        if (reason.trim() === "")
-        {
-            appointmentErrors.reason = "Reason is required";
-        }
-
-        return appointmentErrors;
-
+    type AppointmentFormState = {
+        attempt: number;
+        success: boolean;
+        values: FormValues;
+        errors?: AppointmentFormErrors;
+        formError?: string;
     }
 
-    function handleSubmit(event: React.SubmitEvent<HTMLElement>)
+    const initialState: AppointmentFormState = {
+        attempt: 0,
+        success: false,
+        values: EMPTY_FORM_VALUES,
+        errors: {},
+
+    };
+    const [state, formAction] = useActionState(
+        createAppointmentAction,
+        initialState
+    );
+
+    useEffect(() =>
     {
-        event.preventDefault();
-        const validationErrors = validateAppointment();
-        setErrors(validationErrors);
-        const hasErrors = Object.keys(validationErrors).length > 0;
-        if (hasErrors) return;
-        if (!patientId)
+        if (state.attempt === 0 || state.success) return;
+        const form = formRef.current;
+        if (!form) return;
+        console.log(`success: ${state.success}`);
+        for (const [name, value] of Object.entries(state.values))
         {
-            return;
+            console.log(`${name}: ${value}`)
+            const field = form.elements.namedItem(name);
+
+            if (field instanceof HTMLInputElement ||
+                field instanceof HTMLSelectElement ||
+                field instanceof HTMLTextAreaElement)
+            {
+                field.value = value;
+            }
         }
-        //API/data-access logic
+    }, [state.attempt, state.formError, state.values]);
+
+    async function createAppointmentAction(
+        previousState: AppointmentFormState,
+        formData: FormData
+    ): Promise<AppointmentFormState>
+    {
+        const values: FormValues = {
+            patientId: String(formData.get("patientId") ?? ""),
+            date: String(formData.get("date") ?? ""),
+            time: String(formData.get("time") ?? ""),
+            reason: String(formData.get("reason") ?? ""),
+        };
+        const dateValue = String(formData.get("date") ?? "");
+        const timeValue = String(formData.get("time") ?? "");
+        const reasonValue = String(formData.get("reason") ?? "");
+        if (!dateValue.trim())
+        {
+            return {
+                attempt: previousState.attempt + 1,
+                success: false,
+                values,
+                errors: {
+                    date: "Date is required",
+                },
+            };
+        }
+
+        if (!timeValue.trim())
+        {
+            return {
+                attempt: previousState.attempt + 1,
+                success: false,
+                values,
+                errors: {
+                    time: "Time is required",
+                },
+            };
+        }
+
+        if (!reasonValue.trim())
+        {
+            return {
+                attempt: previousState.attempt + 1,
+                success: false,
+                values,
+                errors: {
+                    reason: "Reason is required",
+                },
+            };
+        }
+
+        const patientIdValue = String(formData.get("patientId") ?? "")
+        if (!patientIdValue.trim())
+        {
+            return {
+                attempt: previousState.attempt + 1,
+                success: false,
+                values,
+                errors: {
+                    patientId: "PatientId is required",
+                },
+            };
+        }
+
+        const patientId = Number(patientIdValue);
+
+        if (!Number.isInteger(patientId) || patientId <= 0)
+        {
+            return {
+                attempt: previousState.attempt + 1,
+                values,
+                success: false,
+                errors:
+                {
+                    patientId: "Select a valid patient."
+                }
+            };
+        }
+        if (!patients.some(patient => patient.id === patientId))
+        {
+            return {
+                attempt: previousState.attempt + 1,
+                values,
+                success: false,
+                errors: {
+                    patientId: "Select a valid patient.",
+                },
+            };
+        }
+
         const appointment: CreateAppointment = {
             patientId,
-            date,
-            time,
-            reason: reason.trim(),
+            date: dateValue,
+            time: timeValue,
+            reason: reasonValue,
         };
-        console.log("Creating Appointment:", appointment);
-        setPatientId(null);
-        setDate("");
-        setTime("");
-        setReason("");
-        setErrors({});
+        try
+        {
+            await createAppointment(appointment);
+            await queryClient.invalidateQueries({ queryKey: ["appointments"] });
+            return {
+                attempt: previousState.attempt + 1,
+                values: EMPTY_FORM_VALUES,
+                success: true,
+            };
+
+        } catch 
+        {
+            return {
+                attempt: previousState.attempt + 1,
+                values,
+                success: false,
+                formError: "Failed to create appointment. Please try again.",
+            };
+        }
+
     }
 
     return (<>
-        <form onSubmit={handleSubmit}>
+        <form
+            ref={formRef}
+            action={formAction}
+        >
             <h1>Schedule Appointment</h1>
-            <label htmlFor="selectPatient"></label>
-            <select id="selectPatient" name="patientId" value={patientId ?? ""} onChange={(e) => setPatientId(Number(e.target.value) || null)}>
+            <label htmlFor="selectPatient">Select Patient:</label>
+            <select id="selectPatient" name="patientId"
+                required>
                 <option value="">Select patient...</option>
                 {patients?.map(patient => (
                     <option key={patient.id} value={patient.id}>{patient.firstName} {patient.lastName}</option>
                 ))}
             </select>
-            {errors.patientId && (<p>{errors.patientId}</p>)}
 
-            <label htmlFor="appointmentDate">Date</label>
-            <input id="appointmentDate" type="date" onChange={(e) => setDate(e.target.value)} value={date} />
-            {errors.date && (<p>{errors.date}</p>)}
 
-            <label htmlFor="appointmentTime">Time</label>
-            <input id="appointmentTime" type="time" onChange={(e) => setTime(e.target.value)} value={time} />
-            {errors.time && (<p>{errors.time}</p>)}
+            <label htmlFor="appointmentDate">Date:</label>
+            <input id="appointmentDate" name="date" type="date"
+                required />
 
-            <label htmlFor="reason">Reason</label>
-            <input id="reason" onChange={(e) => setReason(e.target.value)} value={reason} />
-            {errors.reason && (<p>{errors.reason}</p>)}
 
-            <button type="submit" >
-                Schedule Appointment
-            </button>
+            <label htmlFor="appointmentTime">Time:</label>
+            <input id="appointmentTime" name="time" type="time" required />
 
+            <label htmlFor="reason">Reason:</label>
+            <input id="reason" name="reason"
+                minLength={3}
+                maxLength={200}
+                required />
+            <SubmitButton />
+
+            {state.errors && Object.entries(state.errors).map(([key, value]) => (
+                value && <p key={key} role="alert">{value}</p>
+            ))}
+            {state.formError && (
+                <p role="alert">{state.formError}</p>
+            )}
+            {state.success && <p role="status">Schedule created!</p>}
         </form>
     </>);
 };

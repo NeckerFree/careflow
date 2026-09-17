@@ -3,6 +3,7 @@ import type { Patient, PatientStatus } from "../types/patient";
 import StatusBadge from "./StatusBadge";
 import { usePermission } from "../hooks/usePermission";
 import { useAuth } from "../hooks/useAuth";
+import { memo } from "react";
 type PatientCardProps = {
     patient: Patient;
     isSelected: boolean;
@@ -14,7 +15,7 @@ type PatientCardProps = {
     ) => void;
 };
 
-const PatientCard = ({ patient, isSelected, isUpdating, onSelect, onChangeStatus }: PatientCardProps) =>
+const PatientCard = memo(({ patient, isSelected, isUpdating, onSelect, onChangeStatus }: PatientCardProps) =>
 {
     const { user } = useAuth();
     const { can } = usePermission();
@@ -37,6 +38,6 @@ const PatientCard = ({ patient, isSelected, isUpdating, onSelect, onChangeStatus
                     }}>{isUpdating ? "Updating..." : "Mark Critical"}</button>)}
         </article>
     );
-};
+});
 
 export default PatientCard;

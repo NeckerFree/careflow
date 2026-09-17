@@ -1,3 +1,4 @@
+import type { Appointment } from "../types/appointment";
 import type { Patient, PatientStatus } from "../types/patient";
 export type ApiProps = {
     signal?: AbortSignal
@@ -57,4 +58,31 @@ export async function updatePatientStatus(
     {
         throw new Error("Failed to update patient status");
     }
+}
+
+export async function createAppointment(appointment: Omit<Appointment, "id" | "status">): Promise<Appointment>
+{
+    await delay(3000);
+    const response = await fetch(
+        "https://jsonplaceholder.typicode.com/posts",
+        {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(appointment),
+        }
+    );
+    if (!response.ok)
+    {
+        throw new Error("Failed to create appointment");
+    }
+    const data: Appointment = await response.json();
+    return data;
+}
+
+
+function delay(ms: number): Promise<void>
+{
+    return new Promise((resolve) => setTimeout(resolve, ms));
 }
