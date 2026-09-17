@@ -37,7 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode })
                         id: 1,
                         name: "Pepe Grillo",
                         email: email,
-                        role: "guest",
+                        role: "doctor",
                     };
                     setUser(mockUser);
                 }

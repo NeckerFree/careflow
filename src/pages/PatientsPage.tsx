@@ -1,6 +1,9 @@
+import PatientList from "../components/PatientList";
+
 const PatientsPage = () =>
 {
-    return (<><p>PatientsPage</p>
+    return (<>
+        <PatientList />
     </>);
 };
 

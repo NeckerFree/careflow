@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import type { PatientStatus, Patient } from '../types/patient';
 import PatientCard from './PatientCard';
-import AppointmentForm from "./AppointmentForm";
 import { updatePatientStatus } from "../api/patientsApi"
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePatients } from "../hooks/usePatients";
@@ -125,7 +124,7 @@ export default function PatientList()
                     />
                 ))}
             </div>
-            <AppointmentForm patients={patients} />
         </>
     )
 }
+
