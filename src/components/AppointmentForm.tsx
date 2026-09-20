@@ -92,6 +92,49 @@ const EMPTY_FORM_VALUES: FormValues = {
     time: "",
     reason: "",
 };
+export function validateAppointment(
+    appointment: CreateAppointment,
+    patients: Patient[]
+): ValidationResult<CreateAppointment>
+{
+    const errors: Record<string, string> = {};
+    //date
+    if (!appointment.date || appointment.date === "")
+    {
+        errors["date"] = "Date is required";
+    }
+    //time
+    if (!appointment.time || appointment.time === "")
+    {
+        errors["time"] = "Time is required";
+    }
+    //reason length
+    if (appointment.reason.length < 3)
+    {
+        errors["reason"] = "Reason must contain at least 3 characters";
+    }
+    //patient existence
+    if (!patients.some(patient => patient.id === appointment.patientId))
+    {
+        errors["patientId"] = "Select a valid patient.";
+    }
+
+    if (Object.keys(errors).length > 0)
+    {
+        return {
+            success: false,
+            errors: errors
+        };
+    }
+    else
+    {
+        return {
+            success: true,
+            data: appointment,
+        };
+    }
+};
+
 const AppointmentForm = ({ patients }: AppointmentFormProps) =>
 {
     const queryClient = useQueryClient();
@@ -105,48 +148,6 @@ const AppointmentForm = ({ patients }: AppointmentFormProps) =>
         createAppointmentAction,
         initialState
     );
-    function validateAppointment(
-        appointment: CreateAppointment,
-        patients: Patient[]
-    ): ValidationResult<CreateAppointment>
-    {
-        const errors: Record<string, string> = {};
-        //date
-        if (!appointment.date || appointment.date === "")
-        {
-            errors["date"] = "Date is required";
-        }
-        //time
-        if (!appointment.time || appointment.time === "")
-        {
-            errors["time"] = "Time is required";
-        }
-        //reason length
-        if (appointment.reason.length < 3)
-        {
-            errors["reason"] = "Reason must contain at least 3 characters";
-        }
-        //patient existence
-        if (!patients.some(patient => patient.id === appointment.patientId))
-        {
-            errors["patientId"] = "Select a valid patient.";
-        }
-
-        if (Object.keys(errors).length > 0)
-        {
-            return {
-                success: false,
-                errors: errors
-            };
-        }
-        else
-        {
-            return {
-                success: true,
-                data: appointment,
-            };
-        }
-    };
 
     useEffect(() =>
     {
@@ -279,5 +280,5 @@ const AppointmentForm = ({ patients }: AppointmentFormProps) =>
     </>);
 };
 
-export default { AppointmentForm, parsePositiveInteger, parseAppointmentForm };
+export default { AppointmentForm, parsePositiveInteger, parseAppointmentForm, validateAppointment };
 
