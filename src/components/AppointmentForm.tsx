@@ -1,10 +1,10 @@
 
 import { type Patient } from "../types/patient"
 import { type CreateAppointment } from "../types/appointment"
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useCallback, useEffect, useRef } from "react";
 import { createAppointment } from "../api/patientsApi";
 import SubmitButton from "./SubmitButton";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import type { ValidationResult } from "../types/ValidationResult";
 import type { AppointmentFormState } from "../types/AppointmentFormState";
 import type { AppointmentFormInput, FormValues, ParsedAppointmentForm } from "../types/AppointmentFormInput";
@@ -16,7 +16,7 @@ type AppointmentFormProps = {
 export function parsePositiveInteger(value: string): number | null
 {
     const numeric = Number(value);
-    return Number.isInteger(numeric)
+    return Number.isInteger(numeric) && numeric > 0
         ? numeric
         : null;
 }
@@ -41,8 +41,6 @@ export function parseAppointmentForm(formData: FormData): ParsedAppointmentForm
     const time = getFormString(formData, "time");
     const reason = getFormString(formData, "reason");
     const patientIdValue = getFormString(formData, "patientId");
-    //parse PatientId
-    const patientId = parsePositiveInteger(patientIdValue);
 
     const formValues: FormValues = {
         patientId: patientIdValue,
@@ -50,12 +48,13 @@ export function parseAppointmentForm(formData: FormData): ParsedAppointmentForm
         time,
         reason
     };
+
+    const patientId = parsePositiveInteger(patientIdValue);
     if (patientId === null)
     {
         return {
             success: false,
             errors: {
-                ...errors,
                 patientId: "Patient ID must be a positive integer.",
             },
             values: formValues,
@@ -135,17 +134,86 @@ export function validateAppointment(
     }
 };
 
+export async function createAppointmentAction(
+    patients: Patient[],
+    queryClient: QueryClient,
+    _previousState: AppointmentFormState<FormValues>,
+    formData: FormData
+): Promise<AppointmentFormState<FormValues>>
+{
+    const parsedResponse = parseAppointmentForm(formData);
+    if (parsedResponse.success === false)
+    {
+        return {
+            status: "validation-error",
+            fieldErrors: parsedResponse.errors,
+            values: parsedResponse.values,
+        };
+    }
+    const appointment: CreateAppointment = {
+        patientId: parsedResponse.data.patientId,
+        date: parsedResponse.data.date,
+        time: parsedResponse.data.time,
+        reason: parsedResponse.data.reason,
+    };
+    const validationResult = validateAppointment(appointment, patients);
+    if (validationResult.success === false)
+    {
+        return {
+            status: "validation-error",
+            fieldErrors: validationResult.errors,
+            values: parsedResponse.values,
+        };
+    }
+    try
+    {
+        await createAppointment(appointment);
+        await queryClient.invalidateQueries({ queryKey: ["appointments"] });
+
+        return {
+            status: "success",
+            values: EMPTY_FORM_VALUES,
+
+        };
+
+    } catch 
+    {
+        return {
+            status: "api-error",
+            errorCode: "CONFLICT",
+            values: parsedResponse.values,
+            formError: "Failed to create appointment. Please try again.",
+        };
+    }
+
+}
+
 const AppointmentForm = ({ patients }: AppointmentFormProps) =>
 {
     const queryClient = useQueryClient();
+
     const formRef = useRef<HTMLFormElement>(null);
+
+    const formActionCallback = useCallback(
+        (
+            previousState: AppointmentFormState<FormValues>,
+            formData: FormData
+        ) =>
+            createAppointmentAction(
+                patients,
+                queryClient,
+                previousState,
+                formData
+            ),
+        [patients, queryClient]
+    );
 
     const initialState: AppointmentFormState<FormValues> = {
         status: "idle",
         values: EMPTY_FORM_VALUES,
     };
     const [state, formAction] = useActionState(
-        createAppointmentAction,
+        formActionCallback,
         initialState
     );
 
@@ -168,57 +236,6 @@ const AppointmentForm = ({ patients }: AppointmentFormProps) =>
         }
     }, [state.status, state.values]);
 
-    async function createAppointmentAction(
-        previousState: AppointmentFormState<FormValues>,
-        formData: FormData
-    ): Promise<AppointmentFormState<FormValues>>
-    {
-        const parsedResponse = parseAppointmentForm(formData);
-        if (parsedResponse.success === false)
-        {
-            return {
-                status: "validation-error",
-                fieldErrors: parsedResponse.errors,
-                values: parsedResponse.values,
-            };
-        }
-        const appointment: CreateAppointment = {
-            patientId: parsedResponse.data.patientId,
-            date: parsedResponse.data.date,
-            time: parsedResponse.data.time,
-            reason: parsedResponse.data.reason,
-        };
-        const validationResult = validateAppointment(appointment, patients);
-        if (validationResult.success === false)
-        {
-            return {
-                status: "validation-error",
-                fieldErrors: validationResult.errors,
-                values: parsedResponse.values,
-            };
-        }
-        try
-        {
-            await createAppointment(appointment);
-            await queryClient.invalidateQueries({ queryKey: ["appointments"] });
-            return {
-                status: "success",
-                values: EMPTY_FORM_VALUES,
-
-            };
-
-        } catch 
-        {
-            return {
-                status: "api-error",
-                errorCode: "CONFLICT",
-                values: parsedResponse.values,
-                formError: "Failed to create appointment. Please try again.",
-            };
-        }
-
-    }
-
     return (<>
         <form
             ref={formRef}
@@ -229,7 +246,7 @@ const AppointmentForm = ({ patients }: AppointmentFormProps) =>
             <select id="selectPatient" name="patientId"
                 required>
                 <option value="">Select patient...</option>
-                {patients?.map(patient => (
+                {patients.map(patient => (
                     <option key={patient.id} value={patient.id}>{patient.firstName} {patient.lastName}</option>
                 ))}
             </select>
@@ -279,6 +296,4 @@ const AppointmentForm = ({ patients }: AppointmentFormProps) =>
         </form>
     </>);
 };
-
-export default { AppointmentForm, parsePositiveInteger, parseAppointmentForm, validateAppointment };
-
+export default AppointmentForm;
