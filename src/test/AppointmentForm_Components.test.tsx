@@ -753,5 +753,517 @@ describe("AppointmentForm", () =>
             expect(document.activeElement).toBe(alert);
         });
     });
+    it("exposes the pending submission as an accessible status", async () =>
+    {
+        const user = userEvent.setup();
+
+        let resolveRequest!: () => void;
+
+        vi.mocked(createAppointment).mockImplementation(
+            () =>
+                new Promise(resolve =>
+                {
+                    resolveRequest = () => resolve(undefined as never);
+                })
+        );
+
+        renderAppointmentForm(patients);
+
+        const patientSelector = screen.getByRole("combobox", {
+            name: /select patient/i,
+        });
+
+        const dateInput = screen.getByLabelText(/date/i);
+        const timeInput = screen.getByLabelText(/time/i);
+        const reasonInput = screen.getByLabelText(/reason/i);
+
+        await user.selectOptions(patientSelector, "1");
+
+        fireEvent.change(dateInput, {
+            target: { value: "2026-10-01" },
+        });
+
+        await user.type(timeInput, "10:30");
+        await user.type(reasonInput, "Routine appointment");
+
+        const submitButton = screen.getByRole("button", {
+            name: /schedule appointment/i,
+        });
+
+        await user.click(submitButton);
+
+        const status = await screen.findByRole("status");
+
+        expect(status).toHaveTextContent(
+            "Scheduling appointment..."
+        );
+
+        expect(status).toHaveAttribute(
+            "aria-live",
+            "polite"
+        );
+
+        resolveRequest();
+
+        await screen.findByText("Schedule created!");
+    });
+    it("announces successful submission as an accessible status", async () =>
+    {
+        const user = userEvent.setup();
+
+        let resolveRequest!: () => void;
+
+        vi.mocked(createAppointment).mockImplementation(
+            () =>
+                new Promise(resolve =>
+                {
+                    resolveRequest = () => resolve(undefined as never);
+                })
+        );
+
+        renderAppointmentForm(patients);
+
+        const patientSelector = screen.getByRole("combobox", {
+            name: /select patient/i,
+        });
+
+        const dateInput = screen.getByLabelText(/date/i);
+        const timeInput = screen.getByLabelText(/time/i);
+        const reasonInput = screen.getByLabelText(/reason/i);
+
+        await user.selectOptions(patientSelector, "1");
+
+        fireEvent.change(dateInput, {
+            target: { value: "2026-10-01" },
+        });
+
+        await user.type(timeInput, "10:30");
+        await user.type(reasonInput, "Routine appointment");
+
+        const submitButton = screen.getByRole("button", {
+            name: /schedule appointment/i,
+        });
+
+        await user.click(submitButton);
+
+        resolveRequest();
+
+        await screen.findByText("Schedule created!");
+        const status = screen.getByRole("status");
+        expect(status).toHaveTextContent(
+            "Schedule created!"
+        );
+        expect(status).toHaveAttribute(
+            "aria-live",
+            "polite"
+        );
+    });
+
+    it("announces API failure after pending submission", async () =>
+    {
+        const user = userEvent.setup();
+        let rejectRequest!: (reason?: unknown) => void;
+
+        vi.mocked(createAppointment).mockImplementation(
+            () =>
+                new Promise((_, reject) =>
+                {
+                    rejectRequest = reject;
+                })
+        );
+        renderAppointmentForm(patients);
+
+        const patientSelector = screen.getByRole("combobox", {
+            name: /select patient/i,
+        });
+
+        const dateInput = screen.getByLabelText(/date/i);
+        const timeInput = screen.getByLabelText(/time/i);
+        const reasonInput = screen.getByLabelText(/reason/i);
+
+        await user.selectOptions(patientSelector, "1");
+
+        fireEvent.change(dateInput, {
+            target: { value: "2026-10-01" },
+        });
+
+        await user.type(timeInput, "10:30");
+        await user.type(reasonInput, "Routine appointment");
+
+        const submitButton = screen.getByRole("button", {
+            name: /schedule appointment/i,
+        });
+
+        await user.click(submitButton);
+
+        const pendingStatus = await screen.findByRole("status");
+
+        expect(pendingStatus).toHaveTextContent(
+            "Scheduling appointment..."
+        );
+        rejectRequest(new Error("API failure"));
+        const alert = await screen.findByRole("alert");
+
+        expect(alert).toHaveTextContent(
+            "CONFLICT: Failed to create appointment. Please try again."
+        );
+        await waitFor(() =>
+        {
+            expect(document.activeElement).toBe(alert);
+            expect(
+                screen.queryByText("Scheduling appointment...")
+            ).not.toBeInTheDocument();
+        });
+    });
+    it("replaces the pending status with the success status", async () =>
+    {
+        const user = userEvent.setup();
+
+        let resolveRequest!: () => void;
+
+        vi.mocked(createAppointment).mockImplementation(
+            () =>
+                new Promise(resolve =>
+                {
+                    resolveRequest = () => resolve(undefined as never);
+                })
+        );
+
+        renderAppointmentForm(patients);
+
+        const patientSelector = screen.getByRole("combobox", {
+            name: /select patient/i,
+        });
+
+        const dateInput = screen.getByLabelText(/date/i);
+        const timeInput = screen.getByLabelText(/time/i);
+        const reasonInput = screen.getByLabelText(/reason/i);
+
+        await user.selectOptions(patientSelector, "1");
+
+        fireEvent.change(dateInput, {
+            target: { value: "2026-10-01" },
+        });
+
+        await user.type(timeInput, "10:30");
+        await user.type(reasonInput, "Routine appointment");
+
+        const submitButton = screen.getByRole("button", {
+            name: /schedule appointment/i,
+        });
+
+        await user.click(submitButton);
+
+        expect(
+            await screen.findByText("Scheduling appointment...")
+        ).toBeInTheDocument();
+
+        resolveRequest();
+
+        await waitFor(() =>
+        {
+            expect(
+                screen.getByRole("status")
+            ).toHaveTextContent("Schedule created!");
+            expect(
+                screen.queryByText("Scheduling appointment...")
+            ).not.toBeInTheDocument();
+        });
+        const statuses = screen.getAllByRole("status");
+
+        expect(statuses).toHaveLength(1);
+
+        expect(statuses[0]).toHaveTextContent(
+            "Schedule created!"
+        );
+    });
+    it("recovers from an API error and succeeds on retry", async () =>
+    {
+        const user = userEvent.setup();
+        let requestCount = 0;
+
+        vi.mocked(createAppointment).mockImplementation(async () =>
+        {
+            requestCount++;
+
+            if (requestCount === 1)
+            {
+                throw new Error("API failure");
+            }
+
+            return undefined as never;
+        });
+
+        renderAppointmentForm(patients);
+
+        const patientSelector = screen.getByRole("combobox", {
+            name: /select patient/i,
+        });
+
+        const dateInput = screen.getByLabelText(/date/i);
+        const timeInput = screen.getByLabelText(/time/i);
+        const reasonInput = screen.getByLabelText(/reason/i);
+
+        await user.selectOptions(patientSelector, "1");
+
+        fireEvent.change(dateInput, {
+            target: { value: "2026-10-01" },
+        });
+
+        await user.type(timeInput, "10:30");
+        await user.type(reasonInput, "Routine appointment");
+        const submitButton = screen.getByRole("button", {
+            name: /schedule appointment/i,
+        });
+
+        await user.click(submitButton);
+
+        const alert = await screen.findByRole("alert");
+
+        expect(alert).toHaveTextContent(
+            "CONFLICT: Failed to create appointment. Please try again."
+        );
+        expect(patientSelector).toHaveValue("1");
+        expect(dateInput).toHaveValue("2026-10-01");
+        expect(timeInput).toHaveValue("10:30");
+        expect(reasonInput).toHaveValue("Routine appointment");
+
+        await user.click(submitButton);
+
+        const successStatus = await screen.findByRole("status");
+        expect(successStatus).toHaveTextContent("Schedule created!");
+        expect(
+            screen.queryByText(
+                "CONFLICT: Failed to create appointment. Please try again."
+            )
+        ).not.toBeInTheDocument();
+        expect(patientSelector).toHaveValue("");
+        expect(dateInput).toHaveValue("");
+        expect(timeInput).toHaveValue("");
+        expect(reasonInput).toHaveValue("");
+        const statuses = screen.getAllByRole("status");
+
+        expect(statuses).toHaveLength(1);
+        expect(statuses[0]).toHaveTextContent("Schedule created!");
+    });
+    it("recovers from validation errors and succeeds on retry", async () =>
+    {
+        const user = userEvent.setup();
+
+        vi.mocked(createAppointment).mockImplementation(async () => { return undefined as never; });
+
+        renderAppointmentForm(patients);
+
+        const patientSelector = screen.getByRole("combobox", {
+            name: /select patient/i,
+        });
+
+        const dateInput = screen.getByLabelText(/date/i);
+        const timeInput = screen.getByLabelText(/time/i);
+        const reasonInput = screen.getByLabelText(/reason/i);
+
+        const invalidOption = document.createElement("option");
+        invalidOption.value = "999";
+        invalidOption.textContent = "Invalid Patient";
+        patientSelector.appendChild(invalidOption);
+        await user.selectOptions(patientSelector, "999");
+
+        fireEvent.change(dateInput, {
+            target: { value: "2026-10-01" },
+        });
+
+        await user.type(timeInput, "10:30");
+        await user.type(reasonInput, "     ");
+        const submitButton = screen.getByRole("button", {
+            name: /schedule appointment/i,
+        });
+
+        await user.click(submitButton);
+
+        await waitFor(() =>
+        {
+            const alerts = screen.getAllByRole("alert");
+
+            expect(alerts).toHaveLength(2);
+
+            expect(alerts).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({
+                        textContent: "Select a valid patient.",
+                    }),
+                    expect.objectContaining({
+                        textContent:
+                            "Reason must contain at least 3 non-whitespace characters",
+                    }),
+                ])
+            );
+        });
+        expect(createAppointment).not.toHaveBeenCalled();
+        await user.selectOptions(patientSelector, "1");
+        await user.type(reasonInput, "Routine appointment");
+
+        await user.click(submitButton);
+        await waitFor(() =>
+        {
+            expect(
+                screen.getByRole("status")
+            ).toHaveTextContent("Schedule created!");
+        });
+
+        expect(patientSelector).toHaveValue("");
+        expect(dateInput).toHaveValue("");
+        expect(timeInput).toHaveValue("");
+        expect(reasonInput).toHaveValue("");
+        expect(
+            screen.queryByText(
+                "CONFLICT: Failed to create appointment. Please try again."
+            )
+        ).not.toBeInTheDocument();
+    });
+    it("replaces stale validation errors on a new submission", async () =>
+    {
+        const user = userEvent.setup();
+
+        vi.mocked(createAppointment).mockImplementation(async () => { return undefined as never; });
+
+        renderAppointmentForm(patients);
+
+        const patientSelector = screen.getByRole("combobox", {
+            name: /select patient/i,
+        });
+
+        const dateInput = screen.getByLabelText(/date/i);
+        const timeInput = screen.getByLabelText(/time/i);
+        const reasonInput = screen.getByLabelText(/reason/i);
+
+        const invalidOption = document.createElement("option");
+        invalidOption.value = "999";
+        invalidOption.textContent = "Invalid Patient";
+        patientSelector.appendChild(invalidOption);
+        await user.selectOptions(patientSelector, "999");
+
+        fireEvent.change(dateInput, {
+            target: { value: "2026-10-01" },
+        });
+
+        await user.type(timeInput, "10:30");
+        await user.type(reasonInput, "     ");
+        const submitButton = screen.getByRole("button", {
+            name: /schedule appointment/i,
+        });
+
+        await user.click(submitButton);
+
+        await waitFor(() =>
+        {
+            const alerts = screen.getAllByRole("alert");
+
+            expect(alerts).toHaveLength(2);
+
+            expect(alerts).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({
+                        textContent: "Select a valid patient.",
+                    }),
+                    expect.objectContaining({
+                        textContent:
+                            "Reason must contain at least 3 non-whitespace characters",
+                    }),
+                ])
+            );
+        });
+        await user.selectOptions(patientSelector, "1");
+        await user.type(reasonInput, "     ");
+        await user.click(submitButton);
+        await waitFor(() =>
+        {
+            const alerts = screen.getAllByRole("alert");
+
+            expect(alerts).toHaveLength(1);
+
+            expect(alerts).toEqual(
+                expect.arrayContaining([
+                    expect.not.objectContaining({
+                        textContent: "Select a valid patient.",
+                    }),
+                    expect.objectContaining({
+                        textContent:
+                            "Reason must contain at least 3 non-whitespace characters",
+                    }),
+                ])
+            );
+        });
+        expect(createAppointment).not.toHaveBeenCalled();
+    });
+    it("clears the previous API error when a new submission starts", async () =>
+    {
+        const user = userEvent.setup();
+        let requestCount = 0;
+        let resolveRequest!: () => void;
+        vi.mocked(createAppointment).mockImplementation(async () =>
+        {
+            requestCount++;
+
+            if (requestCount === 1)
+            {
+                throw new Error("API failure");
+            }
+
+            return new Promise(resolve =>
+            {
+                resolveRequest = () => resolve(undefined as never);
+            })
+        });
+
+        renderAppointmentForm(patients);
+
+        const patientSelector = screen.getByRole("combobox", {
+            name: /select patient/i,
+        });
+
+        const dateInput = screen.getByLabelText(/date/i);
+        const timeInput = screen.getByLabelText(/time/i);
+        const reasonInput = screen.getByLabelText(/reason/i);
+
+        await user.selectOptions(patientSelector, "1");
+
+        fireEvent.change(dateInput, {
+            target: { value: "2026-10-01" },
+        });
+
+        await user.type(timeInput, "10:30");
+        await user.type(reasonInput, "Routine appointment");
+        const submitButton = screen.getByRole("button", {
+            name: /schedule appointment/i,
+        });
+
+        await user.click(submitButton);
+
+        const alert = await screen.findByRole("alert");
+
+        expect(alert).toHaveTextContent(
+            "CONFLICT: Failed to create appointment. Please try again."
+        );
+
+        await user.click(submitButton);
+        expect(
+            await screen.findByText("Scheduling appointment...")
+        ).toBeInTheDocument();
+        resolveRequest();
+        await waitFor(() =>
+        {
+            expect(
+                screen.getByRole("status")
+            ).toHaveTextContent("Schedule created!");
+            expect(
+                screen.queryByText(
+                    "CONFLICT: Failed to create appointment. Please try again."
+                )
+            ).not.toBeInTheDocument();
+        });
+    });
 });
+
+
+
 

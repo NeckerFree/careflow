@@ -8,6 +8,7 @@ import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import type { ValidationResult } from "../types/ValidationResult";
 import type { AppointmentFormState } from "../types/AppointmentFormState";
 import type { AppointmentFormInput, FormValues, ParsedAppointmentForm } from "../types/AppointmentFormInput";
+import { FormStatus } from "./FormStatus";
 type AppointmentFormProps = {
     patients: Patient[]
 
@@ -334,6 +335,7 @@ const AppointmentForm = ({ patients }: AppointmentFormProps) =>
                         : undefined
                 }
             />
+            <FormStatus />
             <SubmitButton />
 
             {(() =>
@@ -359,10 +361,11 @@ const AppointmentForm = ({ patients }: AppointmentFormProps) =>
                         </>)
                     case "success":
                         return (<>
-                            {<p role="status">Schedule created!</p>}
+                            {<p role="status" aria-live="polite">Schedule created!</p>}
                         </>)
                     case "idle":
-                        return null
+                        return null;
+
                 }
             }
             )()}
