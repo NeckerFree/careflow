@@ -108,9 +108,11 @@ export function validateAppointment(
         errors["time"] = "Time is required";
     }
     //reason length
-    if (appointment.reason.length < 3)
+    if (appointment.reason.trim().length < 3)
     {
-        errors["reason"] = "Reason must contain at least 3 characters";
+        {
+            errors["reason"] = "Reason must contain at least 3 non-whitespace characters";
+        }
     }
     //patient existence
     if (!patients.some(patient => patient.id === appointment.patientId))
@@ -193,7 +195,11 @@ const AppointmentForm = ({ patients }: AppointmentFormProps) =>
     const queryClient = useQueryClient();
 
     const formRef = useRef<HTMLFormElement>(null);
-
+    const patientRef = useRef<HTMLSelectElement>(null);
+    const dateRef = useRef<HTMLInputElement>(null);
+    const timeRef = useRef<HTMLInputElement>(null);
+    const reasonRef = useRef<HTMLInputElement>(null);
+    const formErrorRef = useRef<HTMLParagraphElement>(null);
     const formActionCallback = useCallback(
         (
             previousState: AppointmentFormState<FormValues>,
@@ -236,6 +242,43 @@ const AppointmentForm = ({ patients }: AppointmentFormProps) =>
         }
     }, [state.status, state.values]);
 
+    useEffect(() =>
+    {
+        if (state.status === "validation-error") 
+        {
+            if (state.fieldErrors.patientId)
+            {
+                patientRef.current?.focus();
+                return;
+            }
+
+            if (state.fieldErrors.date)
+            {
+                dateRef.current?.focus();
+                return;
+            }
+
+            if (state.fieldErrors.time)
+            {
+                timeRef.current?.focus();
+                return;
+            }
+
+            if (state.fieldErrors.reason)
+            {
+                reasonRef.current?.focus();
+            }
+        }
+        if (state.status === "api-error")
+        {
+            formErrorRef.current?.focus();
+        }
+    }, [state.status, state.values]);
+    const hasFieldError = (field: string): boolean =>
+
+        state.status === "validation-error" &&
+        Boolean(state.fieldErrors[field]);
+
     return (<>
         <form
             ref={formRef}
@@ -243,8 +286,15 @@ const AppointmentForm = ({ patients }: AppointmentFormProps) =>
         >
             <h1>Schedule Appointment</h1>
             <label htmlFor="selectPatient">Select Patient:</label>
-            <select id="selectPatient" name="patientId"
-                required>
+            <select ref={patientRef} id="selectPatient" name="patientId"
+                required
+                aria-invalid={hasFieldError("patientId")}
+                aria-describedby={
+                    hasFieldError("patientId")
+                        ? "patientId-error"
+                        : undefined
+                }
+            >
                 <option value="">Select patient...</option>
                 {patients.map(patient => (
                     <option key={patient.id} value={patient.id}>{patient.firstName} {patient.lastName}</option>
@@ -253,18 +303,37 @@ const AppointmentForm = ({ patients }: AppointmentFormProps) =>
 
 
             <label htmlFor="appointmentDate">Date:</label>
-            <input id="appointmentDate" name="date" type="date"
-                required />
+            <input ref={dateRef} id="appointmentDate" name="date" type="date"
+                required aria-invalid={hasFieldError("date")}
+                aria-describedby={
+                    hasFieldError("date")
+                        ? "date-error"
+                        : undefined
+                }
+            />
 
 
             <label htmlFor="appointmentTime">Time:</label>
-            <input id="appointmentTime" name="time" type="time" required />
+            <input ref={timeRef} id="appointmentTime" name="time" type="time" required
+                aria-invalid={hasFieldError("time")}
+                aria-describedby={
+                    hasFieldError("time")
+                        ? "time-error"
+                        : undefined
+                }
+            />
 
             <label htmlFor="reason">Reason:</label>
-            <input id="reason" name="reason"
+            <input ref={reasonRef} id="reason" name="reason"
                 minLength={3}
                 maxLength={200}
-                required />
+                required aria-invalid={hasFieldError("reason")}
+                aria-describedby={
+                    hasFieldError("reason")
+                        ? "reason-error"
+                        : undefined
+                }
+            />
             <SubmitButton />
 
             {(() =>
@@ -274,12 +343,16 @@ const AppointmentForm = ({ patients }: AppointmentFormProps) =>
                     case "validation-error":
                         return (<>
                             {Object.entries(state.fieldErrors).map(([key, value]) => (
-                                value && <p key={key} role="alert">{value}</p>
+                                value && <p key={key} id={`${key}-error`} role="alert">{value}</p>
                             ))}</>)
                     case "api-error":
                         return (<>
                             {(
-                                <p role="alert">
+                                <p
+                                    ref={formErrorRef}
+                                    role="alert"
+                                    tabIndex={-1}
+                                >
                                     {state.errorCode}: {state.formError}
                                 </p>
                             )}
