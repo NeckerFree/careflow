@@ -1,20 +1,24 @@
-import { describe, expect, it, afterEach } from "vitest";
+import { describe, expect, it, afterEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom/vitest";
 import AppointmentForm from "../components/AppointmentForm";
-import { vi } from "vitest";
 import { createAppointment } from "../api/patientsApi";
-
-vi.mock("../api/patientsApi", () => ({
-    createAppointment: vi.fn(),
-}));
 import
 {
     QueryClient,
     QueryClientProvider,
 } from "@tanstack/react-query";
 import type { Patient } from "../types/patient";
+import { RenderAppointmentHelper } from "./RenderAppointmentHelper";
+import { fetchAppointments } from "./AppointmentsProbe";
+import { fetchAppointments2 } from "./AppointmentsProbe2";
+import { RenderAppointmentHelper2 } from "./RenderAppointmentHelper2";
+import { initialAppointments } from "./AppointmentsProbe2";
+
+vi.mock("../api/patientsApi", () => ({
+    createAppointment: vi.fn(),
+}));
 
 function renderAppointmentForm(patients: Patient[])
 {
@@ -26,12 +30,17 @@ function renderAppointmentForm(patients: Patient[])
         },
     });
 
-    return render(
+    const result = render(
         <QueryClientProvider client={queryClient}>
             <AppointmentForm patients={patients} />
         </QueryClientProvider>
     );
+    return {
+        ...result,
+        queryClient,
+    }
 }
+
 afterEach(() =>
 {
     cleanup();
@@ -1262,6 +1271,236 @@ describe("AppointmentForm", () =>
             ).not.toBeInTheDocument();
         });
     });
+    it("invalidates appointments after successful creation", async () =>
+    {
+        const user = userEvent.setup();
+        let resolveRequest!: () => void;
+
+        vi.mocked(createAppointment).mockImplementation(
+            () =>
+                new Promise(resolve =>
+                {
+                    resolveRequest = () => resolve(undefined as never);
+                })
+        );
+        const { queryClient } = renderAppointmentForm(patients);
+        const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+        const patientSelector = screen.getByRole("combobox", {
+            name: /select patient/i,
+        });
+
+        const dateInput = screen.getByLabelText(/date/i);
+        const timeInput = screen.getByLabelText(/time/i);
+        const reasonInput = screen.getByLabelText(/reason/i);
+
+        await user.selectOptions(patientSelector, "1");
+
+        fireEvent.change(dateInput, {
+            target: { value: "2026-10-01" },
+        });
+
+        await user.type(timeInput, "10:30");
+        await user.type(reasonInput, "Routine appointment");
+
+        const submitButton = screen.getByRole("button", {
+            name: /schedule appointment/i,
+        });
+
+        await user.click(submitButton);
+        resolveRequest();
+        await waitFor(() =>
+        {
+            expect(
+                screen.getByRole("status")
+            ).toHaveTextContent("Schedule created!");
+            expect(invalidateSpy).toHaveBeenCalledWith({
+                queryKey: ["appointments"],
+            });
+            expect(invalidateSpy).toHaveBeenCalledTimes(1);
+        });
+    });
+    it("does not invalidate appointments when creation fails", async () =>
+    {
+        const user = userEvent.setup();
+
+        vi.mocked(createAppointment).mockRejectedValue(
+            new Error("API failure")
+        );
+
+        const { queryClient } = renderAppointmentForm(patients);
+        const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+        const patientSelector = screen.getByRole("combobox", {
+            name: /select patient/i,
+        });
+
+        const dateInput = screen.getByLabelText(/date/i);
+        const timeInput = screen.getByLabelText(/time/i);
+        const reasonInput = screen.getByLabelText(/reason/i);
+
+        await user.selectOptions(patientSelector, "1");
+
+        fireEvent.change(dateInput, {
+            target: { value: "2026-10-01" },
+        });
+
+        await user.type(timeInput, "10:30");
+        await user.type(reasonInput, "Routine appointment");
+
+        const submitButton = screen.getByRole("button", {
+            name: /schedule appointment/i,
+        });
+
+        await user.click(submitButton);
+        const alert = await screen.findByRole("alert");
+
+        expect(alert).toHaveTextContent(
+            "CONFLICT: Failed to create appointment. Please try again."
+        );
+        expect(invalidateSpy).not.toHaveBeenCalled();
+
+    });
+    it("invalidates appointments only after the API succeeds", async () =>
+    {
+        const user = userEvent.setup();
+        const events: string[] = [];
+
+        vi.mocked(createAppointment).mockImplementation(
+            async () =>
+            {
+                events.push("api");
+                return undefined as never;
+            }
+        );
+        const { queryClient } = renderAppointmentForm(patients);
+
+        const invalidateSpy = vi.spyOn(
+            queryClient,
+            "invalidateQueries"
+        ).mockImplementation(async () =>
+        {
+            events.push("invalidate");
+        });
+        const patientSelector = screen.getByRole("combobox", {
+            name: /select patient/i,
+        });
+
+        const dateInput = screen.getByLabelText(/date/i);
+        const timeInput = screen.getByLabelText(/time/i);
+        const reasonInput = screen.getByLabelText(/reason/i);
+
+        await user.selectOptions(patientSelector, "1");
+
+        fireEvent.change(dateInput, {
+            target: { value: "2026-10-01" },
+        });
+
+        await user.type(timeInput, "10:30");
+        await user.type(reasonInput, "Routine appointment");
+
+        const submitButton = screen.getByRole("button", {
+            name: /schedule appointment/i,
+        });
+
+        await user.click(submitButton);
+
+        expect(events).toEqual([
+            "api",
+            "invalidate",
+        ]);
+        expect(invalidateSpy).toHaveBeenCalled();
+    });
+    it("refetches active appointments after successful creation", async () =>
+    {
+        const user = userEvent.setup();
+
+        vi.mocked(createAppointment).mockResolvedValue(
+            undefined as never
+        );
+
+        RenderAppointmentHelper(patients);
+
+        const patientSelector = screen.getByRole("combobox", {
+            name: /select patient/i,
+        });
+
+        const dateInput = screen.getByLabelText(/date/i);
+        const timeInput = screen.getByLabelText(/time/i);
+        const reasonInput = screen.getByLabelText(/reason/i);
+
+        await user.selectOptions(patientSelector, "1");
+
+        fireEvent.change(dateInput, {
+            target: { value: "2026-10-01" },
+        });
+
+        await user.type(timeInput, "10:30");
+        await user.type(reasonInput, "Annual checkup");
+        const submitButton = screen.getByRole("button", {
+            name: /schedule appointment/i,
+        });
+
+        await user.click(submitButton);
+
+        await waitFor(() =>
+        {
+            expect(
+                screen.getByRole("status")
+            ).toHaveTextContent("Schedule created!");
+            expect(fetchAppointments).toHaveBeenCalledTimes(2);
+        });
+    });
+    //___________________________________________________________________________
+    it("updates the appointments cache after successful creation", async () =>
+    {
+        const user = userEvent.setup();
+        vi.mocked(createAppointment).mockImplementation(
+            async () => { return undefined as never; }
+        );
+
+        const { queryClient } = RenderAppointmentHelper2(patients);
+
+        await waitFor(() =>
+        {
+            expect(fetchAppointments2).toHaveBeenCalledTimes(1);
+            expect(
+                queryClient.getQueryData(["appointments"])
+            ).toEqual(initialAppointments);
+        });
+        const patientSelector = screen.getByRole("combobox", {
+            name: /select patient/i,
+        });
+
+        const dateInput = screen.getByLabelText(/date/i);
+        const timeInput = screen.getByLabelText(/time/i);
+        const reasonInput = screen.getByLabelText(/reason/i);
+
+        await user.selectOptions(patientSelector, "1");
+
+        fireEvent.change(dateInput, {
+            target: { value: "2026-10-01" },
+        });
+
+        await user.type(timeInput, "10:30");
+        await user.type(reasonInput, "Annual checkup");
+
+        const submitButton = screen.getByRole("button", {
+            name: /schedule appointment/i,
+        });
+
+        await user.click(submitButton);
+        await screen.findByText("Schedule created!");
+
+        await waitFor(() =>
+        {
+            expect(fetchAppointments2).toHaveBeenCalledTimes(2);
+        });
+
+    });
+    //     it("preserves the appointments cache when creation fails", async () => {
+    //     // ...
+    // });
 });
 
 

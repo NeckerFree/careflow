@@ -71,7 +71,6 @@ export function parseAppointmentForm(formData: FormData): ParsedAppointmentForm
     }
     else
     {
-        //return parsed data
         const appointmentFormInput: AppointmentFormInput = {
             patientId: patientId,
             date: date,
@@ -98,24 +97,23 @@ export function validateAppointment(
 ): ValidationResult<CreateAppointment>
 {
     const errors: Record<string, string> = {};
-    //date
+
     if (!appointment.date || appointment.date === "")
     {
         errors["date"] = "Date is required";
     }
-    //time
+
     if (!appointment.time || appointment.time === "")
     {
         errors["time"] = "Time is required";
     }
-    //reason length
     if (appointment.reason.trim().length < 3)
     {
         {
             errors["reason"] = "Reason must contain at least 3 non-whitespace characters";
         }
     }
-    //patient existence
+
     if (!patients.some(patient => patient.id === appointment.patientId))
     {
         errors["patientId"] = "Select a valid patient.";
