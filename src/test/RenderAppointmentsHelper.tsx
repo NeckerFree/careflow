@@ -1,12 +1,14 @@
-import { QueryClientProvider } from "@tanstack/react-query";
-import { QueryClient } from "@tanstack/react-query";
-import { render } from "@testing-library/react";
-
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { Appointment } from "../types/appointment";
+import type { Patient } from "../types/patient";
 import AppointmentForm from "../components/AppointmentForm";
 import { AppointmentsProbe } from "./AppointmentsProbe";
-import type { Patient } from "../types/patient";
+import { render } from "@testing-library/react";
 
-export function RenderAppointmentHelper(patients: Patient[])
+export function RenderAppointmentHelper(
+    patients: Patient[],
+    fetchAppointments: () => Promise<Appointment[]>
+)
 {
     const queryClient = new QueryClient({
         defaultOptions: {
@@ -20,12 +22,15 @@ export function RenderAppointmentHelper(patients: Patient[])
         <QueryClientProvider client={queryClient}>
             <>
                 <AppointmentForm patients={patients} />
-                <AppointmentsProbe />
+                <AppointmentsProbe
+                    fetchAppointments={fetchAppointments}
+                />
             </>
         </QueryClientProvider>
     );
+
     return {
         ...result,
         queryClient,
-    }
+    };
 }

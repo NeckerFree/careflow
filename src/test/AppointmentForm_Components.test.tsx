@@ -10,11 +10,9 @@ import
     QueryClientProvider,
 } from "@tanstack/react-query";
 import type { Patient } from "../types/patient";
-import { RenderAppointmentHelper } from "./RenderAppointmentHelper";
-import { fetchAppointments } from "./AppointmentsProbe";
-import { fetchAppointments2 } from "./AppointmentsProbe2";
-import { RenderAppointmentHelper2 } from "./RenderAppointmentHelper2";
-import { initialAppointments } from "./AppointmentsProbe2";
+import { RenderAppointmentHelper } from "./RenderAppointmentsHelper";
+import type { Appointment } from "../types/appointment";
+import { RenderAppointmentHelperRetry } from "./RenderAppointmentsHelperRetry";
 
 vi.mock("../api/patientsApi", () => ({
     createAppointment: vi.fn(),
@@ -1418,8 +1416,15 @@ describe("AppointmentForm", () =>
         vi.mocked(createAppointment).mockResolvedValue(
             undefined as never
         );
+        const fetchAppointments = vi.fn(async () =>
+        {
+            return [];
+        });
 
-        RenderAppointmentHelper(patients);
+        RenderAppointmentHelper(
+            patients,
+            fetchAppointments
+        );
 
         const patientSelector = screen.getByRole("combobox", {
             name: /select patient/i,
@@ -1451,19 +1456,55 @@ describe("AppointmentForm", () =>
             expect(fetchAppointments).toHaveBeenCalledTimes(2);
         });
     });
-    //___________________________________________________________________________
+
     it("updates the appointments cache after successful creation", async () =>
     {
         const user = userEvent.setup();
         vi.mocked(createAppointment).mockImplementation(
             async () => { return undefined as never; }
         );
+        const initialAppointments: Appointment[] = [
+            {
+                id: 1,
+                patientId: 1,
+                date: "2026-09-30",
+                time: "09:00",
+                status: "scheduled",
+                reason: "Initial appointment",
+            },
+        ];
 
-        const { queryClient } = RenderAppointmentHelper2(patients);
+        const refreshedAppointments: Appointment[] = [
+            ...initialAppointments,
+            {
+                id: 2,
+                patientId: 1,
+                date: "2026-10-01",
+                time: "10:30",
+                status: "scheduled",
+                reason: "Annual checkup",
+            },
+        ];
+
+        let fetchCount = 0;
+
+        const fetchAppointments = vi.fn(async () =>
+        {
+            fetchCount++;
+
+            return fetchCount === 1
+                ? initialAppointments
+                : refreshedAppointments;
+        });
+
+        const { queryClient } = RenderAppointmentHelper(
+            patients,
+            fetchAppointments
+        );
 
         await waitFor(() =>
         {
-            expect(fetchAppointments2).toHaveBeenCalledTimes(1);
+            expect(fetchAppointments).toHaveBeenCalledTimes(1);
             expect(
                 queryClient.getQueryData(["appointments"])
             ).toEqual(initialAppointments);
@@ -1494,15 +1535,602 @@ describe("AppointmentForm", () =>
 
         await waitFor(() =>
         {
-            expect(fetchAppointments2).toHaveBeenCalledTimes(2);
+            expect(fetchAppointments).toHaveBeenCalledTimes(2);
         });
 
     });
-    //     it("preserves the appointments cache when creation fails", async () => {
-    //     // ...
-    // });
+    it("preserves the appointments cache when creation fails", async () =>
+    {
+        const user = userEvent.setup();
+        const initialAppointments: Appointment[] = [
+            {
+                id: 1,
+                patientId: 1,
+                date: "2026-09-30",
+                time: "09:00",
+                status: "scheduled",
+                reason: "Initial appointment",
+            },
+        ];
+
+        const fetchAppointments = vi.fn(async () =>
+        {
+            return initialAppointments;
+        });
+
+        vi.mocked(createAppointment).mockRejectedValue(
+            new Error("API failure")
+        );
+
+        const { queryClient } = RenderAppointmentHelper(
+            patients,
+            fetchAppointments
+        );
+
+        await waitFor(() =>
+        {
+            expect(fetchAppointments).toHaveBeenCalledTimes(1);
+        });
+
+        const patientSelector = screen.getByRole("combobox", {
+            name: /select patient/i,
+        });
+
+        const dateInput = screen.getByLabelText(/date/i);
+        const timeInput = screen.getByLabelText(/time/i);
+        const reasonInput = screen.getByLabelText(/reason/i);
+
+        await user.selectOptions(patientSelector, "1");
+
+        fireEvent.change(dateInput, {
+            target: { value: "2026-10-01" },
+        });
+
+        await user.type(timeInput, "10:30");
+        await user.type(reasonInput, "Annual checkup");
+
+        const submitButton = screen.getByRole("button", {
+            name: /schedule appointment/i,
+        });
+
+        await user.click(submitButton);
+        await waitFor(() =>
+        {
+            expect(fetchAppointments).toHaveBeenCalledTimes(1);
+        });
+        expect(
+            queryClient.getQueryData(["appointments"])
+        ).toEqual(initialAppointments);
+        const alert = await screen.findByRole("alert");
+
+        expect(alert).toHaveTextContent(
+            "CONFLICT: Failed to create appointment. Please try again."
+        );
+    });
+    it("preserves cached appointments while refetching", async () =>
+    {
+        const user = userEvent.setup();
+        vi.mocked(createAppointment).mockResolvedValue(
+            undefined as never
+        );
+        const initialAppointments: Appointment[] = [
+            {
+                id: 1,
+                patientId: 1,
+                date: "2026-09-30",
+                time: "09:00",
+                status: "scheduled",
+                reason: "Initial appointment",
+            },
+        ];
+        let fetchCount = 0;
+        let resolveRefetch!: () => void;
+
+        const fetchAppointments = vi.fn(
+            async () =>
+            {
+                fetchCount++;
+
+                if (fetchCount === 1)
+                {
+                    return initialAppointments;
+                }
+
+                return new Promise<Appointment[]>(resolve =>
+                {
+                    resolveRefetch = () => resolve(initialAppointments);
+                });
+            }
+        );
+        const { queryClient } = RenderAppointmentHelper(
+            patients,
+            fetchAppointments
+        );
+        const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+        await waitFor(() =>
+        {
+            expect(fetchAppointments).toHaveBeenCalledTimes(1);
+        });
+
+        expect(
+            queryClient.getQueryData(["appointments"])
+        ).toEqual(initialAppointments);
+        const patientSelector = screen.getByRole("combobox", {
+            name: /select patient/i,
+        });
+
+        const dateInput = screen.getByLabelText(/date/i);
+        const timeInput = screen.getByLabelText(/time/i);
+        const reasonInput = screen.getByLabelText(/reason/i);
+
+        await user.selectOptions(patientSelector, "1");
+
+        fireEvent.change(dateInput, {
+            target: { value: "2026-10-01" },
+        });
+
+        await user.type(timeInput, "10:30");
+        await user.type(reasonInput, "Annual checkup");
+
+        const submitButton = screen.getByRole("button", {
+            name: /schedule appointment/i,
+        });
+
+        await user.click(submitButton);
+
+        await waitFor(() =>
+        {
+            expect(fetchAppointments).toHaveBeenCalledTimes(2);
+        });
+
+        expect(
+            queryClient.getQueryData(["appointments"])
+        ).toEqual(initialAppointments);
+
+        resolveRefetch();
+        expect(invalidateSpy).toHaveBeenCalledWith({
+            queryKey: ["appointments"],
+        });
+        await waitFor(() =>
+        {
+            expect(
+                queryClient.getQueryData(["appointments"])
+            ).toEqual(initialAppointments);
+        });
+    });
+    it("preserves cached appointments when refetch fails", async () =>
+    {
+        const user = userEvent.setup();
+        vi.mocked(createAppointment).mockResolvedValue(
+            undefined as never
+        );
+        const initialAppointments: Appointment[] = [
+            {
+                id: 1,
+                patientId: 1,
+                date: "2026-09-30",
+                time: "09:00",
+                status: "scheduled",
+                reason: "Initial appointment",
+            },
+        ];
+        let fetchCount = 0;
+
+        const fetchAppointments = vi.fn(
+            async () =>
+            {
+                fetchCount++;
+
+                if (fetchCount === 1)
+                {
+                    return initialAppointments;
+                }
+
+                throw new Error("Refetch failed");
+            }
+        );
+        const { queryClient } = RenderAppointmentHelper(
+            patients,
+            fetchAppointments
+        );
+        await waitFor(() =>
+        {
+            expect(fetchAppointments).toHaveBeenCalledTimes(1);
+        });
+        expect(queryClient.getQueryData(["appointments"]))
+            .toEqual(initialAppointments);
+
+        const patientSelector = screen.getByRole("combobox", {
+            name: /select patient/i,
+        });
+
+        const dateInput = screen.getByLabelText(/date/i);
+        const timeInput = screen.getByLabelText(/time/i);
+        const reasonInput = screen.getByLabelText(/reason/i);
+
+        await user.selectOptions(patientSelector, "1");
+
+        fireEvent.change(dateInput, {
+            target: { value: "2026-10-01" },
+        });
+
+        await user.type(timeInput, "10:30");
+        await user.type(reasonInput, "Annual checkup");
+
+        const submitButton = screen.getByRole("button", {
+            name: /schedule appointment/i,
+        });
+
+        await user.click(submitButton);
+
+        await screen.findByText("Schedule created!");
+        await waitFor(() =>
+        {
+            expect(fetchAppointments).toHaveBeenCalledTimes(2);
+        });
+
+        expect(queryClient.getQueryData(["appointments"]))
+            .toEqual(initialAppointments);
+    });
+
+    it("shows an error when the initial appointments fetch fails", async () =>
+    {
+        const fetchAppointments = vi.fn(async () =>
+        {
+            throw new Error("Failed to load appointments");
+        });
+        RenderAppointmentHelper(
+            patients,
+            fetchAppointments
+        );
+        await waitFor(() =>
+        {
+            expect(fetchAppointments).toHaveBeenCalledTimes(1);
+        });
+
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent(
+            "Failed to load appointments"
+        );
+    });
+    it("retries the appointments query after an initial failure", async () =>
+    {
+        const initialAppointments: Appointment[] = [
+            {
+                id: 1,
+                patientId: 1,
+                date: "2026-09-30",
+                time: "09:00",
+                status: "scheduled",
+                reason: "Initial appointment",
+            },
+        ];
+
+        let fetchCount = 0;
+
+        const fetchAppointments = vi.fn(async () =>
+        {
+            fetchCount++;
+
+            if (fetchCount === 1)
+            {
+                throw new Error("Temporary failure");
+            }
+
+            return initialAppointments;
+        });
+        const { queryClient } = RenderAppointmentHelperRetry(
+            patients,
+            fetchAppointments
+        );
+        await waitFor(() =>
+        {
+            expect(fetchAppointments).toHaveBeenCalledTimes(2);
+        });
+
+        expect(
+            queryClient.getQueryData(["appointments"])
+        ).toEqual(initialAppointments);
+
+        expect(
+            screen.queryByRole("alert")
+        ).not.toBeInTheDocument();
+    });
+    it("preserves appointments while showing a background refetch error", async () =>
+    {
+        const initialAppointments: Appointment[] = [
+            {
+                id: 1,
+                patientId: 1,
+                date: "2026-09-30",
+                time: "09:00",
+                status: "scheduled",
+                reason: "Initial appointment",
+            },
+        ];
+
+        let fetchCount = 0;
+
+        const fetchAppointments = vi.fn(async () =>
+        {
+            fetchCount++;
+
+            if (fetchCount === 1)
+            {
+                return initialAppointments;
+            }
+
+            throw new Error("Refetch failed");
+        });
+
+        const { queryClient } = RenderAppointmentHelper(
+            patients,
+            fetchAppointments
+        );
+        await waitFor(() =>
+        {
+            expect(fetchAppointments).toHaveBeenCalledTimes(1);
+        });
+
+        expect(
+            queryClient.getQueryData(["appointments"])
+        ).toEqual(initialAppointments);
+
+        await queryClient.invalidateQueries({
+            queryKey: ["appointments"],
+        });
+        await waitFor(() =>
+        {
+            expect(fetchAppointments).toHaveBeenCalledTimes(2);
+        });
+
+        expect(
+            queryClient.getQueryData(["appointments"])
+        ).toEqual(initialAppointments);
+
+        expect(screen.getByTestId("appointments-count")
+        ).toHaveTextContent("1");
+
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent(
+            "Failed to load appointments"
+        );
+    });
+
+    it("retry a background refetch", async () =>
+    {
+        const initialAppointments: Appointment[] = [
+            {
+                id: 1,
+                patientId: 1,
+                date: "2026-09-30",
+                time: "09:00",
+                status: "scheduled",
+                reason: "Initial appointment",
+            },
+        ];
+
+        const refreshedAppointments: Appointment[] = [
+            ...initialAppointments,
+            {
+                id: 2,
+                patientId: 1,
+                date: "2026-10-01",
+                time: "10:30",
+                status: "scheduled",
+                reason: "Annual checkup",
+            },
+        ];
+
+        let fetchCount = 0;
+
+        const fetchAppointments = vi.fn(async () =>
+        {
+            fetchCount++;
+
+            if (fetchCount === 1)
+            {
+                return initialAppointments;
+            }
+
+            if (fetchCount === 2)
+            {
+                throw new Error("Temporary refetch failure");
+            }
+
+            return refreshedAppointments;
+        });
+
+        const { queryClient } = RenderAppointmentHelperRetry(
+            patients,
+            fetchAppointments
+        );
+        await waitFor(() =>
+        {
+            expect(fetchAppointments).toHaveBeenCalledTimes(1);
+        });
+
+        expect(
+            queryClient.getQueryData(["appointments"])
+        ).toEqual(initialAppointments);
+
+        await queryClient.invalidateQueries({
+            queryKey: ["appointments"],
+        });
+
+        await waitFor(() =>
+        {
+            expect(fetchAppointments).toHaveBeenCalledTimes(3);
+        });
+
+        expect(
+            queryClient.getQueryData(["appointments"])
+        ).toEqual(refreshedAppointments);
+
+        expect(
+            screen.queryByRole("alert")
+        ).not.toBeInTheDocument();
+        expect(
+            screen.getByTestId("appointments-count")
+        ).toHaveTextContent("2");
+    });
+    it("shows an error after a background refetch exhausts retries", async () =>
+    {
+        const initialAppointments: Appointment[] = [
+            {
+                id: 1,
+                patientId: 1,
+                date: "2026-09-30",
+                time: "09:00",
+                status: "scheduled",
+                reason: "Initial appointment",
+            },
+        ];
+
+        let fetchCount = 0;
+
+        const fetchAppointments = vi.fn(async () =>
+        {
+            fetchCount++;
+
+            if (fetchCount === 1)
+            {
+                return initialAppointments;
+            }
+
+            throw new Error("Refetch failed");
+        });
+        const { queryClient } = RenderAppointmentHelperRetry(
+            patients,
+            fetchAppointments
+        );
+        await waitFor(() =>
+        {
+            expect(fetchAppointments).toHaveBeenCalledTimes(1);
+        });
+        expect(
+            queryClient.getQueryData(["appointments"])
+        ).toEqual(initialAppointments);
+
+        await queryClient.invalidateQueries({
+            queryKey: ["appointments"],
+        });
+        await waitFor(() =>
+        {
+            expect(fetchAppointments).toHaveBeenCalledTimes(3);
+        });
+
+        expect(
+            queryClient.getQueryData(["appointments"])
+        ).toEqual(initialAppointments);
+        const alert = await screen.findByRole("alert");
+
+        expect(alert).toHaveTextContent(
+            "Failed to load appointments"
+        );
+        expect(
+            screen.getByTestId("appointments-count")
+        ).toHaveTextContent("1");
+    });
+
+
+
+
+    it("allows manually retrying after automatic retries are exhausted", async () =>
+    {
+        const user = userEvent.setup();
+
+        const initialAppointments: Appointment[] = [
+            {
+                id: 1,
+                patientId: 1,
+                date: "2026-09-30",
+                time: "09:00",
+                status: "scheduled",
+                reason: "Initial appointment",
+            },
+        ];
+
+        const refreshedAppointments: Appointment[] = [
+            ...initialAppointments,
+            {
+                id: 2,
+                patientId: 2,
+                date: "2026-10-01",
+                time: "10:00",
+                status: "scheduled",
+                reason: "Follow-up appointment",
+            },
+        ];
+
+        let fetchCount = 0;
+
+        const fetchAppointments = vi.fn(async () =>
+        {
+            fetchCount++;
+
+            if (fetchCount === 1)
+            {
+                return initialAppointments;
+            }
+
+            if (fetchCount === 2 || fetchCount === 3)
+            {
+                throw new Error("Refetch failed");
+            }
+
+            return refreshedAppointments;
+        });
+
+        const { queryClient } = RenderAppointmentHelperRetry(
+            patients,
+            fetchAppointments
+        );
+
+        // Initial fetch succeeds.
+        await waitFor(() =>
+        {
+            expect(fetchAppointments).toHaveBeenCalledTimes(1);
+        });
+
+        expect(queryClient.getQueryData(["appointments"]))
+            .toEqual(initialAppointments);
+        // Background refetch occurs.
+        await queryClient.invalidateQueries({
+            queryKey: ["appointments"],
+        });
+
+        await waitFor(() =>
+        {
+            expect(fetchAppointments).toHaveBeenCalledTimes(3);
+        });
+        // Automatic retry is exhausted.
+        expect(
+            queryClient.getQueryData(["appointments"])
+        ).toEqual(initialAppointments);
+
+        // Error is displayed.
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent(
+            "Failed to load appointments.");
+
+        // Retry button is displayed.
+        const retryButton = screen.getByRole("button", {
+            name: "Retry"
+        });
+        // User clicks Retry.
+        await user.click(retryButton);
+        // Fetch #4 succeeds and refreshed appointments appear.
+        await waitFor(() =>
+        {
+            expect(fetchAppointments).toHaveBeenCalledTimes(4);
+        });
+
+        // Error disappears and the query cache contains refreshedAppointments.
+        expect(screen.queryByRole("alert"))
+            .not.toBeInTheDocument();
+        expect(queryClient.getQueryData(["appointments"]))
+            .toEqual(refreshedAppointments);
+    });
 });
-
-
-
-
