@@ -14,6 +14,8 @@ export function AppointmentsProbe({
         isLoading,
         isError,
         refetch,
+        isFetching,
+        isRefetching,
     }
         = useQuery({
             queryKey: ["appointments"],
@@ -23,17 +25,39 @@ export function AppointmentsProbe({
     return (
         <>
             <div data-testid="appointments-count">
-                {data?.length ?? 0}
+                {data.length}
             </div>
             {isError &&
                 <p role="alert">
                     Failed to load appointments.
                 </p>
             }
+            {isLoading && (
+                <p
+                    role="status"
+                    data-testid="appointments-loading"
+                >
+                    Loading appointments...
+                </p>
+            )}
+            {isFetching && (
+                <p
+                    role="status"
+                    data-testid="appointments-fetching"
+                >
+                    Fetching appointments...
+                </p>
+            )}
+            {isRefetching && (
+                <p role="status"
+                    data-testid="appointments-updating"
+                >
+                    Updating appointments...
+                </p>
+            )}
             <button type="button" onClick={() => refetch()}>
                 Retry
             </button>
-            {isLoading && <p>Loading Appointments...</p>}
         </>
     );
 }

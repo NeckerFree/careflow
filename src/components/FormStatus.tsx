@@ -10,6 +10,7 @@ export const FormStatus = () =>
         <p
             role="status"
             aria-live="polite"
+            data-testid="form-status"
         >
             Scheduling appointment...
         </p>

@@ -2133,4 +2133,394 @@ describe("AppointmentForm", () =>
         expect(queryClient.getQueryData(["appointments"]))
             .toEqual(refreshedAppointments);
     });
+
+    it("shows updating status while a background refetch is pending", async () =>
+    {
+        const initialAppointments: Appointment[] = [
+            {
+                id: 1,
+                patientId: 1,
+                date: "2026-09-30",
+                time: "09:00",
+                status: "scheduled",
+                reason: "Initial appointment",
+            },
+        ];
+
+        let fetchCount = 0;
+        let resolveRefetch!: () => void;
+
+        const fetchAppointments = vi.fn(async () =>
+        {
+            fetchCount++;
+
+            if (fetchCount === 1)
+            {
+                return initialAppointments;
+            }
+
+            return new Promise<Appointment[]>(resolve =>
+            {
+                resolveRefetch = () => resolve(initialAppointments);
+            });
+        });
+
+        const { queryClient } = RenderAppointmentHelper(
+            patients,
+            fetchAppointments
+        );
+        // Initial data loads.
+        await waitFor(() =>
+        {
+            expect(fetchAppointments).toHaveBeenCalledTimes(1);
+        });
+
+        expect(queryClient.getQueryData(["appointments"]))
+            .toEqual(initialAppointments);
+
+        // A background refetch starts.
+        const refetchPromise = queryClient.invalidateQueries({
+            queryKey: ["appointments"],
+        });
+
+        // Wait until the background refetch actually starts.
+        await waitFor(() =>
+        {
+            expect(fetchAppointments).toHaveBeenCalledTimes(2);
+        });
+
+        // Existing data remains visible.
+        expect(queryClient.getQueryData(["appointments"]))
+            .toEqual(initialAppointments);
+
+        // "Updating appointments..." appears while refetch is pending.    
+        const updating = screen.getByTestId("appointments-updating");
+        expect(updating)
+            .toHaveTextContent("Updating appointments...");
+
+        resolveRefetch();
+
+        await refetchPromise;
+        // After the refetch resolves, the updating message disappears.
+        expect(screen.queryByTestId("appointments-updating")).not.toBeInTheDocument;
+    });
+
+    it("does not show initial loading state during a background refetch", async () =>
+    {
+        const initialAppointments: Appointment[] = [
+            {
+                id: 1,
+                patientId: 1,
+                date: "2026-09-30",
+                time: "09:00",
+                status: "scheduled",
+                reason: "Initial appointment",
+            },
+        ];
+
+        let fetchCount = 0;
+        let resolveRefetch!: () => void;
+
+        const fetchAppointments = vi.fn(async () =>
+        {
+            fetchCount++;
+
+            if (fetchCount === 1)
+            {
+                return initialAppointments;
+            }
+
+            return new Promise<Appointment[]>(resolve =>
+            {
+                resolveRefetch = () => resolve(initialAppointments);
+            });
+        });
+
+        const { queryClient } = RenderAppointmentHelper(
+            patients,
+            fetchAppointments
+        );
+        // Initial data loads.
+        await waitFor(() =>
+        {
+            expect(screen.getByTestId("appointments-count"))
+                .toHaveTextContent("1");
+        });
+
+
+        expect(fetchAppointments).toHaveBeenCalledTimes(1);
+        expect(queryClient.getQueryData(["appointments"]))
+            .toEqual(initialAppointments);
+
+        // A background refetch starts.
+        const refetchPromise = queryClient.invalidateQueries({
+            queryKey: ["appointments"],
+        });
+        await waitFor(() =>
+        {
+            expect(fetchAppointments).toHaveBeenCalledTimes(2);
+
+        });
+
+        expect(queryClient.getQueryData(["appointments"]))
+            .toEqual(initialAppointments);
+
+        const updating = screen.getByTestId("appointments-updating");
+        expect(updating)
+            .toHaveTextContent("Updating appointments...");
+
+        expect(screen.queryByTestId("appointments-loading")).not.toBeInTheDocument();
+        resolveRefetch();
+        await refetchPromise;
+        await waitFor(() =>
+        {
+            expect(screen.queryByTestId("appointments-updating")).not.toBeInTheDocument();
+        });
+    });
+    //______________________________________________________________________________________
+    it("isFetching vs isRefetching", async () =>
+    {
+        const initialAppointments: Appointment[] = [
+            {
+                id: 1,
+                patientId: 1,
+                date: "2026-09-30",
+                time: "09:00",
+                status: "scheduled",
+                reason: "Initial appointment",
+            },
+        ];
+        const refreshedAppointments: Appointment[] = [
+            ...initialAppointments,
+            {
+                id: 2,
+                patientId: 2,
+                date: "2026-10-01",
+                time: "10:00",
+                status: "scheduled",
+                reason: "Follow-up appointment",
+            },
+        ];
+        let fetchCount = 0;
+        let resolveInitial!: () => void;
+        let resolveRefetch!: () => void;
+        const fetchAppointments = vi.fn(async () =>
+        {
+            fetchCount++;
+
+            if (fetchCount === 1)
+            {
+                return new Promise<Appointment[]>(resolve =>
+                {
+                    resolveInitial = () => resolve(initialAppointments);
+                });
+            }
+
+            return new Promise<Appointment[]>(resolve =>
+            {
+                resolveRefetch = () => resolve(refreshedAppointments);
+            });
+        });
+
+        const { queryClient } = RenderAppointmentHelper(
+            patients,
+            fetchAppointments
+        );
+
+        await waitFor(() =>
+        {
+            expect(fetchAppointments).toHaveBeenCalledTimes(1);
+        });
+        expect(screen.getByTestId("appointments-count"))
+            .toHaveTextContent("0");
+        const loading = screen.getByTestId("appointments-loading");
+        expect(loading)
+            .toHaveTextContent("Loading appointments...");
+        const fetching = screen.getByTestId("appointments-fetching");
+        expect(fetching)
+            .toHaveTextContent("Fetching appointments...");
+        expect(screen.queryByTestId("appointments-updating"))
+            .not.toBeInTheDocument();
+
+        resolveInitial();
+        await waitFor(() =>
+        {
+            expect(screen.getByTestId("appointments-count"))
+                .toHaveTextContent("1");
+        });
+        expect(queryClient.getQueryData(["appointments"]))
+            .toEqual(initialAppointments);
+        const loading2 = screen.queryByTestId("appointments-loading");
+        expect(loading2)
+            .not.toBeInTheDocument();
+        const fetching2 = screen.queryByTestId("appointments-fetching");
+        expect(fetching2)
+            .not.toBeInTheDocument();
+        const updating2 = screen.queryByTestId("appointments-updating");
+        expect(updating2)
+            .not.toBeInTheDocument();
+
+        // A background refetch starts.
+        const refetchPromise = queryClient.invalidateQueries({
+            queryKey: ["appointments"],
+        });
+        await waitFor(() =>
+        {
+            expect(fetchAppointments).toHaveBeenCalledTimes(2);
+        });
+        expect(screen.getByTestId("appointments-count"))
+            .toHaveTextContent("1");
+        const loading3 = screen.queryByTestId("appointments-loading");
+        expect(loading3)
+            .not.toBeInTheDocument();
+        const fetching3 = screen.getByTestId("appointments-fetching");
+        expect(fetching3)
+            .toHaveTextContent("Fetching appointments...");
+        const updating3 = screen.getByTestId("appointments-updating");
+        expect(updating3)
+            .toHaveTextContent("Updating appointments...");
+
+        resolveRefetch();
+        await refetchPromise;
+
+        await waitFor(() =>
+        {
+            expect(queryClient.getQueryData(["appointments"]))
+                .toEqual(refreshedAppointments);
+            expect(screen.queryByTestId("appointments-updating")).not.toBeInTheDocument();
+        });
+        expect(screen.getByTestId("appointments-count"))
+            .toHaveTextContent("2");
+        const loading4 = screen.queryByTestId("appointments-loading");
+        expect(loading4)
+            .not.toBeInTheDocument();
+        const fetching4 = screen.queryByTestId("appointments-fetching");
+        expect(fetching4)
+            .not.toBeInTheDocument();
+        const updating4 = screen.queryByTestId("appointments-updating");
+        expect(updating4)
+            .not.toBeInTheDocument();
+    });
+    it("separates form pending state from appointments refetch state", async () =>
+    {
+        const user = userEvent.setup();
+        const initialAppointments: Appointment[] = [
+            {
+                id: 1,
+                patientId: 1,
+                date: "2026-09-30",
+                time: "09:00",
+                status: "scheduled",
+                reason: "Initial appointment",
+            },
+        ];
+        const refreshedAppointments: Appointment[] = [
+            ...initialAppointments,
+            {
+                id: 2,
+                patientId: 1,
+                date: "2026-09-30",
+                time: "09:00",
+                status: "scheduled",
+                reason: "Created appointment",
+            },
+        ];
+        let fetchCount = 0;
+        let resolveRefetch!: () => void;
+        let resolveCreate!: () => void;
+
+        const fetchAppointments = vi.fn(
+            async () =>
+            {
+                fetchCount++;
+
+                if (fetchCount === 1)
+                {
+                    return initialAppointments;
+                }
+
+                return new Promise<Appointment[]>(resolve =>
+                {
+                    resolveRefetch = () => resolve(refreshedAppointments);
+                });
+            }
+        );
+
+        vi.mocked(createAppointment).mockImplementation(
+            () =>
+                new Promise(resolve =>
+                {
+                    resolveCreate = () => resolve(undefined as never);
+                })
+        );
+        const { queryClient } = RenderAppointmentHelper(
+            patients,
+            fetchAppointments
+        );
+        const patientSelector = screen.getByRole("combobox", {
+            name: /select patient/i,
+        });
+
+        const dateInput = screen.getByLabelText(/date/i);
+        const timeInput = screen.getByLabelText(/time/i);
+        const reasonInput = screen.getByLabelText(/reason/i);
+
+        await user.selectOptions(patientSelector, "1");
+
+        fireEvent.change(dateInput, {
+            target: { value: "2026-10-01" },
+        });
+
+        await user.type(timeInput, "10:30");
+        await user.type(reasonInput, "Annual checkup");
+
+        const submitButton = screen.getByRole("button", {
+            name: /schedule appointment/i,
+        });
+        //Pending == false
+        expect(screen.queryByTestId("form-status")).not.toBeInTheDocument();
+        //isFetching==false
+        expect(screen.queryByTestId("appointments-fetching")).not.toBeInTheDocument();
+
+        await user.click(submitButton);
+
+        await waitFor(() =>
+        {
+            expect(screen.getByRole("button", { name: "Scheduling..." })).toBeDisabled();
+        });
+
+        //Pending == true
+        expect(screen.getByRole("button", { name: "Scheduling..." })).toHaveTextContent("Scheduling...");
+        //isFetching==false
+        expect(screen.queryByTestId("appointments-fetching")).not.toBeInTheDocument();
+
+        resolveCreate();
+        await waitFor(() =>
+        {
+            expect(fetchAppointments).toHaveBeenCalledTimes(2);
+        });
+
+        //isFetching==true
+        const fetching = screen.getByTestId("appointments-fetching");
+        expect(fetching).toHaveTextContent("Fetching appointments...");
+        // Scheduling...    ❌
+        const reFetching = screen.getByTestId("appointments-updating");
+        expect(reFetching).toHaveTextContent("Updating appointments...");
+
+        expect(screen.queryByTestId("form-status")).toBeInTheDocument();
+        resolveRefetch();
+        await waitFor(() =>
+        {
+            expect(screen.getByTestId("appointments-count"))
+                .toHaveTextContent("2");
+        });
+        expect(queryClient.getQueryData(["appointments"]))
+            .toEqual(refreshedAppointments);
+        //Pending == false
+        expect(screen.queryByTestId("form-status")).not.toBeInTheDocument();
+        //isFetching==false
+        expect(screen.queryByTestId("appointments-fetching")).not.toBeInTheDocument();
+        //isRefetching==false
+        expect(screen.queryByTestId("appointments-updating")).not.toBeInTheDocument();
+    });
 });
